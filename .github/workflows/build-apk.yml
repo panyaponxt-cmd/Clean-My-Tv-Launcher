@@ -25,14 +25,46 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Extract project
-        run: unzip -q -o CleanMyTV-phone-build.zip
+        run: |
+          mkdir -p extracted
+          unzip -oq CleanMyTV-phone-build.zip -d extracted
+
+      - name: Find Android project
+        run: |
+          SETTINGS_FILE=$(find extracted -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)
+
+          if [ -z "$SETTINGS_FILE" ]; then
+            echo "ERROR: Cannot find Android Gradle project"
+            find extracted -maxdepth 4 -type f | head -100
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$(dirname "$SETTINGS_FILE")" >> "$GITHUB_ENV"
 
       - name: Build APK
-        run: cd project && gradle assembleDebug
+        run: |
+          cd "$PROJECT_DIR"
+
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+            ./gradlew --no-daemon assembleDebug
+          else
+            gradle --no-daemon assembleDebug
+          fi
+
+      - name: Prepare APK
+        run: |
+          APK=$(find "$PROJECT_DIR" -type f -path '*/build/outputs/apk/debug/*.apk' -print -quit)
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK not found"
+            exit 1
+          fi
+
+          cp "$APK" "$GITHUB_WORKSPACE/CleanMyTV.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: CleanMyTV-APK
-          path: project/app/build/outputs/apk/debug/*.apk
-          
+          path: CleanMyTV.apk
